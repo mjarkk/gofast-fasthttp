@@ -1,7 +1,9 @@
-# gofast [![GoDoc][godoc-badge]][godoc] [![Go Report Card][goreport-badge]][goreport] [![Travis CI results][travis-badge]][travis] [![GitHub Action Test result][github-action-badge]][github-action]
+# gofast *(fasthttp)*
 
 **gofast** is a [FastCGI][fastcgi] "client" library written purely in
 [golang][golang].
+
+This fork has converted the code to be compatible with the [fasthttp](fasthttp)
 
 ## Contents
 
@@ -30,6 +32,7 @@
 [goreport]: https://goreportcard.com/report/github.com/yookoala/gofast
 [goreport-badge]: https://goreportcard.com/badge/github.com/yookoala/gofast
 [golang]: https://golang.org
+[fasthttp]: https://github.com/valyala/fasthttp
 
 ## What does it do, really?
 

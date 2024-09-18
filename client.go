@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/valyala/fasthttp"
 )
 
 // Role for fastcgi application in spec
@@ -38,30 +40,30 @@ const (
 
 // NewRequest returns a standard FastCGI request
 // with a unique request ID allocted by the client
-func NewRequest(r *http.Request) (req *Request) {
+func NewRequest(ctx *fasthttp.RequestCtx) (req *Request) {
 	req = &Request{
-		Raw:    r,
+		Raw:    ctx,
 		Role:   RoleResponder,
 		Params: make(map[string]string),
 	}
 
 	// if no http request, return here
-	if r == nil {
+	if ctx == nil {
 		return
 	}
 
 	// pass body (io.ReadCloser) to stdio
-	req.Stdin = r.Body
+	// req.Stdin = ctx.PostBody()
 	return
 }
 
 // Request hold information of a standard
 // FastCGI request
 type Request struct {
-	Raw      *http.Request
-	Role     Role
-	Params   map[string]string
-	Stdin    io.ReadCloser
+	Raw    *fasthttp.RequestCtx
+	Role   Role
+	Params map[string]string
+	// Stdin    io.ReadCloser
 	Data     io.ReadCloser
 	KeepConn bool
 }
@@ -141,29 +143,32 @@ func (c *client) writeRequest(reqID uint16, req *Request) (err error) {
 
 	// write the stdin stream
 	stdinWriter := newWriter(c.conn, typeStdin, reqID)
-	if req.Stdin != nil {
-		defer req.Stdin.Close()
-		p := make([]byte, 1024)
-		var count int
-		for {
-			count, err = req.Stdin.Read(p)
-			if err == io.EOF {
-				err = nil
-			} else if err != nil {
-				stdinWriter.Close()
-				return
-			}
-			if count == 0 {
-				break
-			}
-
-			_, err = stdinWriter.Write(p[:count])
-			if err != nil {
-				stdinWriter.Close()
-				return
-			}
-		}
+	if len(req.Raw.PostBody()) > 0 {
+		stdinWriter.Write(req.Raw.PostBody())
 	}
+	// if req.Stdin != nil {
+	// 	defer req.Stdin.Close()
+	// 	p := make([]byte, 1024)
+	// 	var count int
+	// 	for {
+	// 		count, err = req.Stdin.Read(p)
+	// 		if err == io.EOF {
+	// 			err = nil
+	// 		} else if err != nil {
+	// 			stdinWriter.Close()
+	// 			return
+	// 		}
+	// 		if count == 0 {
+	// 			break
+	// 		}
+
+	// 		_, err = stdinWriter.Write(p[:count])
+	// 		if err != nil {
+	// 			stdinWriter.Close()
+	// 			return
+	// 		}
+	// 	}
+	// }
 	if err = stdinWriter.Close(); err != nil {
 		return
 	}
@@ -279,11 +284,9 @@ func (c *client) Do(req *Request) (resp *ResponsePipe, err error) {
 	rwError, allDone := make(chan error), make(chan int)
 
 	// if there is a raw request, use the context deadline
-	var ctx context.Context
+	ctx := context.TODO()
 	if req.Raw != nil {
-		ctx = req.Raw.Context()
-	} else {
-		ctx = context.TODO()
+		ctx = req.Raw
 	}
 
 	// wait group to wait for both read and write to end
@@ -427,7 +430,7 @@ func (pipes *ResponsePipe) Close() {
 }
 
 // WriteTo writes the given output into http.ResponseWriter
-func (pipes *ResponsePipe) WriteTo(rw http.ResponseWriter, ew io.Writer) (err error) {
+func (pipes *ResponsePipe) WriteTo(ctx *fasthttp.RequestCtx, ew io.Writer) (err error) {
 	chErr := make(chan error, 2)
 	defer close(chErr)
 
@@ -435,7 +438,7 @@ func (pipes *ResponsePipe) WriteTo(rw http.ResponseWriter, ew io.Writer) (err er
 	wg.Add(2)
 
 	go func() {
-		chErr <- pipes.writeResponse(rw)
+		chErr <- pipes.writeResponse(ctx)
 		wg.Done()
 	}()
 	go func() {
@@ -461,7 +464,7 @@ func (pipes *ResponsePipe) writeError(w io.Writer) (err error) {
 }
 
 // writeTo writes the given output into http.ResponseWriter
-func (pipes *ResponsePipe) writeResponse(w http.ResponseWriter) (err error) {
+func (pipes *ResponsePipe) writeResponse(ctx *fasthttp.RequestCtx) (err error) {
 	linebody := bufio.NewReaderSize(pipes.stdOutReader, 1024)
 	headers := make(http.Header)
 	statusCode := 0
@@ -473,7 +476,7 @@ func (pipes *ResponsePipe) writeResponse(w http.ResponseWriter) (err error) {
 		var isPrefix bool
 		line, isPrefix, err = linebody.ReadLine()
 		if isPrefix {
-			w.WriteHeader(http.StatusInternalServerError)
+			ctx.SetStatusCode(http.StatusInternalServerError)
 			err = fmt.Errorf("gofast: long header line from subprocess")
 			return
 		}
@@ -481,7 +484,7 @@ func (pipes *ResponsePipe) writeResponse(w http.ResponseWriter) (err error) {
 			break
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			ctx.SetStatusCode(http.StatusInternalServerError)
 			err = fmt.Errorf("gofast: error reading headers: %v", err)
 			return
 		}
@@ -517,7 +520,7 @@ func (pipes *ResponsePipe) writeResponse(w http.ResponseWriter) (err error) {
 		}
 	}
 	if headerLines == 0 || !sawBlankLine {
-		w.WriteHeader(http.StatusInternalServerError)
+		ctx.SetStatusCode(http.StatusInternalServerError)
 		err = fmt.Errorf("gofast: no headers")
 		return
 	}
@@ -535,7 +538,7 @@ func (pipes *ResponsePipe) writeResponse(w http.ResponseWriter) (err error) {
 	}
 
 	if statusCode == 0 && headers.Get("Content-Type") == "" {
-		w.WriteHeader(http.StatusInternalServerError)
+		ctx.SetStatusCode(http.StatusInternalServerError)
 		err = fmt.Errorf("gofast: missing required Content-Type in headers")
 		return
 	}
@@ -549,13 +552,13 @@ func (pipes *ResponsePipe) writeResponse(w http.ResponseWriter) (err error) {
 	// headers to have been touched.
 	for k, vv := range headers {
 		for _, v := range vv {
-			w.Header().Add(k, v)
+			ctx.Response.Header.Add(k, v)
 		}
 	}
 
-	w.WriteHeader(statusCode)
+	ctx.SetStatusCode(statusCode)
 
-	_, err = io.Copy(w, linebody)
+	_, err = io.Copy(ctx, linebody)
 	if err != nil {
 		err = fmt.Errorf("gofast: copy error: %v", err)
 	}

@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/tools/godoc/vfs"
-	"golang.org/x/tools/godoc/vfs/httpfs"
+	"github.com/valyala/fasthttp"
 )
 
 // SessionHandler handles the gofast *Reqeust with the provided given Client.
@@ -99,18 +98,17 @@ func BasicSession(client Client, req *Request) (*ResponsePipe, error) {
 //	QUERY_STRING
 func BasicParamsMap(inner SessionHandler) SessionHandler {
 	return func(client Client, req *Request) (*ResponsePipe, error) {
+		reqCtx := req.Raw
 
-		r := req.Raw
-
-		isHTTPS := r.TLS != nil
+		isHTTPS := reqCtx.IsTLS()
 		if isHTTPS {
 			req.Params["HTTPS"] = "on"
 		}
 
-		remoteAddr, remotePort, _ := net.SplitHostPort(r.RemoteAddr)
-		host, serverPort, err := net.SplitHostPort(r.Host)
+		remoteAddr, remotePort, _ := net.SplitHostPort(reqCtx.RemoteAddr().String())
+		host, serverPort, err := net.SplitHostPort(string(reqCtx.Host()))
 		if err != nil {
-			host = r.Host
+			host = string(reqCtx.Host())
 			if isHTTPS {
 				serverPort = "443"
 			} else {
@@ -118,31 +116,27 @@ func BasicParamsMap(inner SessionHandler) SessionHandler {
 			}
 		}
 
-		cl := r.ContentLength
-		if cl < 1 {
-			cl, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
-			if err != nil {
-				cl = r.ContentLength
-			}
-		}
+		cl := reqCtx.Request.Header.ContentLength()
 		if cl >= 0 {
-			req.Params["CONTENT_LENGTH"] = strconv.FormatInt(cl, 10)
+			req.Params["CONTENT_LENGTH"] = strconv.FormatInt(int64(cl), 10)
+		} else {
+			req.Params["CONTENT_LENGTH"] = "0"
 		}
 
 		// the basic information here
-		req.Params["CONTENT_TYPE"] = r.Header.Get("Content-Type")
+		req.Params["CONTENT_TYPE"] = string(reqCtx.Request.Header.ContentType())
 		req.Params["GATEWAY_INTERFACE"] = "CGI/1.1"
 		req.Params["REMOTE_ADDR"] = remoteAddr
 		req.Params["REMOTE_PORT"] = remotePort
 		req.Params["SERVER_PORT"] = serverPort
 		req.Params["SERVER_NAME"] = host
-		req.Params["SERVER_PROTOCOL"] = r.Proto
-		req.Params["SERVER_SOFTWARE"] = "gofast"
+		req.Params["SERVER_PROTOCOL"] = string(reqCtx.Request.Header.Protocol())
+		req.Params["SERVER_SOFTWARE"] = "gofast-fasthttp"
 		req.Params["REDIRECT_STATUS"] = "200"
-		req.Params["REQUEST_SCHEME"] = r.URL.Scheme
-		req.Params["REQUEST_METHOD"] = r.Method
-		req.Params["REQUEST_URI"] = r.RequestURI
-		req.Params["QUERY_STRING"] = r.URL.RawQuery
+		req.Params["REQUEST_SCHEME"] = string(reqCtx.URI().Scheme())
+		req.Params["REQUEST_METHOD"] = string(reqCtx.Method())
+		req.Params["REQUEST_URI"] = requestUri(reqCtx.URI())
+		req.Params["QUERY_STRING"] = string(reqCtx.URI().QueryString())
 
 		return inner(client, req)
 	}
@@ -152,8 +146,8 @@ func BasicParamsMap(inner SessionHandler) SessionHandler {
 // address.
 func MapRemoteHost(inner SessionHandler) SessionHandler {
 	return func(client Client, req *Request) (*ResponsePipe, error) {
-		r := req.Raw
-		remoteAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
+		reqCtx := req.Raw
+		remoteAddr, _, _ := net.SplitHostPort(reqCtx.RemoteAddr().String())
 		names, _ := net.LookupAddr(remoteAddr)
 		if len(names) > 0 {
 			req.Params["REMOTE_HOST"] = strings.TrimRight(names[0], ".")
@@ -216,8 +210,9 @@ func (fs *FileSystemRouter) Router() Middleware {
 
 			// define some required cgi parameters
 			// with the given http request
-			r := req.Raw
-			fastcgiScriptName := r.URL.Path
+			reqCtx := req.Raw
+			reqPath := string(reqCtx.Path())
+			fastcgiScriptName := reqPath
 
 			var fastcgiPathInfo string
 			if matches := pathinfoRe.Copy().FindStringSubmatch(fastcgiScriptName); len(matches) > 0 {
@@ -233,7 +228,7 @@ func (fs *FileSystemRouter) Router() Middleware {
 			req.Params["PATH_TRANSLATED"] = filepath.Join(docroot, fastcgiPathInfo)
 			req.Params["SCRIPT_NAME"] = fastcgiScriptName
 			req.Params["SCRIPT_FILENAME"] = filepath.Join(docroot, fastcgiScriptName)
-			req.Params["DOCUMENT_URI"] = r.URL.Path
+			req.Params["DOCUMENT_URI"] = reqPath
 			req.Params["DOCUMENT_ROOT"] = docroot
 
 			// check if the script filename is within docroot.
@@ -264,20 +259,21 @@ func MapHeader(inner SessionHandler) SessionHandler {
 
 		// Explicitly map raw host field because golang core library seems to remove
 		// the header field.
-		if r.Host != "" {
-			req.Params["HTTP_HOST"] = r.Host
+		if len(r.Host()) > 0 {
+			req.Params["HTTP_HOST"] = string(r.Host())
 		}
 
 		// http header
-		for k, v := range r.Header {
-			formattedKey := strings.Replace(strings.ToUpper(k), "-", "_", -1)
-			if formattedKey == "CONTENT_TYPE" || formattedKey == "CONTENT_LENGTH" {
-				continue
+		r.Request.Header.VisitAllInOrder(func(k, v []byte) {
+			formattedKey := strings.Replace(strings.ToUpper(string(k)), "-", "_", -1)
+			switch formattedKey {
+			case "CONTENT_TYPE", "CONTENT_LENGTH", "HOST":
+				return
 			}
 
 			key := "HTTP_" + formattedKey
-			var value string
-			if len(v) > 0 {
+			current, ok := req.Params[key]
+			if ok {
 				//   refer to https://tools.ietf.org/html/rfc7230#section-3.2.2
 				//
 				//   A recipient MAY combine multiple header fields with the same field
@@ -288,10 +284,11 @@ func MapHeader(inner SessionHandler) SessionHandler {
 				//   therefore significant to the interpretation of the combined field
 				//   value; a proxy MUST NOT change the order of these field values when
 				//   forwarding a message.
-				value = strings.Join(v, ",")
+				req.Params[key] = current + "," + string(v)
+			} else {
+				req.Params[key] = string(v)
 			}
-			req.Params[key] = value
-		}
+		})
 
 		return inner(client, req)
 	}
@@ -313,15 +310,23 @@ func MapEndpoint(endpointFile string) Middleware {
 	dir, webpath := filepath.Dir(endpointFile), "/"+filepath.Base(endpointFile)
 	return func(inner SessionHandler) SessionHandler {
 		return func(client Client, req *Request) (*ResponsePipe, error) {
-			r := req.Raw
-			req.Params["REQUEST_URI"] = r.URL.RequestURI()
+			reqCtx := req.Raw
+			req.Params["REQUEST_URI"] = requestUri(reqCtx.URI())
 			req.Params["SCRIPT_NAME"] = webpath
 			req.Params["SCRIPT_FILENAME"] = endpointFile
-			req.Params["DOCUMENT_URI"] = r.URL.Path
+			req.Params["DOCUMENT_URI"] = string(reqCtx.Path())
 			req.Params["DOCUMENT_ROOT"] = dir
 			return inner(client, req)
 		}
 	}
+}
+
+func requestUri(uri *fasthttp.URI) string {
+	resp := string(uri.Path())
+	if len(uri.QueryString()) > 0 {
+		resp += "?" + string(uri.QueryString())
+	}
+	return resp
 }
 
 // MapFilterRequest changes the request role to RoleFilter and add the
@@ -341,8 +346,9 @@ func MapFilterRequest(fs http.FileSystem) Middleware {
 
 			// define some required cgi parameters
 			// with the given http request
-			r := req.Raw
-			fastcgiScriptName := r.URL.Path
+			reqCtx := req.Raw
+			reqPath := string(reqCtx.Path())
+			fastcgiScriptName := reqPath
 
 			var fastcgiPathInfo string
 			pathinfoRe := regexp.MustCompile(`^(.+\.php)(/?.+)$`)
@@ -352,10 +358,10 @@ func MapFilterRequest(fs http.FileSystem) Middleware {
 
 			req.Params["PATH_INFO"] = fastcgiPathInfo
 			req.Params["SCRIPT_NAME"] = fastcgiScriptName
-			req.Params["DOCUMENT_URI"] = r.URL.Path
+			req.Params["DOCUMENT_URI"] = reqPath
 
 			// handle directory index
-			urlPath := r.URL.Path
+			urlPath := reqPath
 			if strings.HasSuffix(urlPath, "/") {
 				urlPath = path.Join(urlPath, "index.php")
 			}
@@ -385,21 +391,21 @@ func MapFilterRequest(fs http.FileSystem) Middleware {
 
 // NewFilterLocalFS is a shortcut to use NewFilterFS with
 // a http.FileSystem created for the given local folder.
-func NewFilterLocalFS(root string) Middleware {
-	fs := httpfs.New(vfs.OS(root))
-	return NewFilterFS(fs)
-}
+// func NewFilterLocalFS(root string) Middleware {
+// 	fs := httpfs.New(vfs.OS(root))
+// 	return NewFilterFS(fs)
+// }
 
 // NewFilterFS chains BasicParamsMap, MapHeader and MapFilterRequest
 // to implement Middleware that prepares a fastcgi Filter session
 // environment.
-func NewFilterFS(fs http.FileSystem) Middleware {
-	return Chain(
-		BasicParamsMap,
-		MapHeader,
-		MapFilterRequest(fs),
-	)
-}
+// func NewFilterFS(fs http.FileSystem) Middleware {
+// 	return Chain(
+// 		BasicParamsMap,
+// 		MapHeader,
+// 		MapFilterRequest(fs),
+// 	)
+// }
 
 // NewPHPFS chains BasicParamsMap, MapHeader and FileSystemRouter to implement
 // Middleware that prepares an ordinary PHP hosting session environment.

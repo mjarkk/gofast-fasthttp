@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yookoala/gofast/tools/phpfpm"
+	"github.com/mjarkk/gofast-fasthttp/tools/phpfpm"
 )
 
 func TestFindBinary(t *testing.T) {

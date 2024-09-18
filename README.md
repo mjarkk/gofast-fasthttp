@@ -23,14 +23,7 @@ This fork has converted the code to be compatible with the [fasthttp](fasthttp)
 * [Licence](#licence)
 
 [fastcgi]: http://www.mit.edu/~yandros/doc/specs/fcgi-spec.html
-[godoc]: https://godoc.org/github.com/yookoala/gofast
-[godoc-badge]: https://godoc.org/github.com/yookoala/gofast?status.svg
-[travis]: https://travis-ci.com/github/yookoala/gofast?branch=main
-[travis-badge]: https://api.travis-ci.com/yookoala/gofast.svg?branch=main
-[github-action]: https://github.com/yookoala/gofast/actions?query=workflow%3ATests+branch%3Amain
-[github-action-badge]: https://github.com/yookoala/gofast/actions/workflows/ci.yml/badge.svg?branch=main
-[goreport]: https://goreportcard.com/report/github.com/yookoala/gofast
-[goreport-badge]: https://goreportcard.com/badge/github.com/yookoala/gofast
+[godoc]: https://godoc.org/github.com/mjarkk/gofast-fasthttp
 [golang]: https://golang.org
 [fasthttp]: https://github.com/valyala/fasthttp
 
@@ -94,7 +87,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 func main() {
@@ -138,7 +131,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 func main() {
@@ -195,7 +188,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 func main() {
@@ -243,12 +236,12 @@ func main() {
 </div>
 </details>
 
-[gofast-basicsession]: https://godoc.org/github.com/yookoala/gofast#BasicSession
-[gofast-request]: https://godoc.org/github.com/yookoala/gofast#Request
-[gofast-client]: https://godoc.org/github.com/yookoala/gofast#Client
-[gofast-phpfs]: https://godoc.org/github.com/yookoala/gofast#NewPHPFS
-[gofast-file-endpoint]: https://godoc.org/github.com/yookoala/gofast#NewFileEndpoint
-[gofast-middleware]: https://godoc.org/github.com/yookoala/gofast#Middleware
+[gofast-basicsession]: https://godoc.org/github.com/mjarkk/gofast-fasthttp#BasicSession
+[gofast-request]: https://godoc.org/github.com/mjarkk/gofast-fasthttp#Request
+[gofast-client]: https://godoc.org/github.com/mjarkk/gofast-fasthttp#Client
+[gofast-phpfs]: https://godoc.org/github.com/mjarkk/gofast-fasthttp#NewPHPFS
+[gofast-file-endpoint]: https://godoc.org/github.com/mjarkk/gofast-fasthttp#NewFileEndpoint
+[gofast-middleware]: https://godoc.org/github.com/mjarkk/gofast-fasthttp#Middleware
 
 #### FastCGI Authorizer
 
@@ -300,7 +293,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 func myApp() http.Handler {
@@ -358,7 +351,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 func main() {
@@ -405,7 +398,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 func main() {
@@ -475,8 +468,8 @@ To fix an existing bug or implement a new feature, please:
 4. Open a pull request referencing the issue.
 5. Have fun :-)
 
-[issue tracker]: https://github.com/yookoala/gofast/issues
-[pull requests]: https://github.com/yookoala/gofast/pulls
+[issue tracker]: https://github.com/mjarkk/gofast-fasthttp/issues
+[pull requests]: https://github.com/mjarkk/gofast-fasthttp/pulls
 
 
 ## Licence

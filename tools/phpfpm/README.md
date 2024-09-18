@@ -1,4 +1,4 @@
-# phpfpm [![GoDoc](https://godoc.org/github.com/yookoala/gofast/tools/phpfpm?status.svg)][godoc]
+# phpfpm [![GoDoc](https://godoc.org/github.com/mjarkk/gofast-fasthttp/tools/phpfpm?status.svg)][godoc]
 
 **phpfpm** is a minimalistic php-fpm process manager written
 in [go][golang].
@@ -9,7 +9,7 @@ and listen to 1 address only.
 This is a fringe case, I know. Just hope it might be useful for
 someone else.
 
-[godoc]: https://godoc.org/github.com/yookoala/gofast/tools/phpfpm
+[godoc]: https://godoc.org/github.com/mjarkk/gofast-fasthttp/tools/phpfpm
 [golang]: https://golang.org
 
 Usage
@@ -18,7 +18,7 @@ Usage
 ```go
 package main
 
-import "github.com/yookoala/gofast/tools/phpfpm"
+import "github.com/mjarkk/gofast-fasthttp/tools/phpfpm"
 
 func main() {
 

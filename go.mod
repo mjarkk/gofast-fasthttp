@@ -1,4 +1,4 @@
-module github.com/yookoala/gofast
+module github.com/mjarkk/gofast-fasthttp
 
 go 1.7
 

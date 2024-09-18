@@ -3,7 +3,7 @@ package php
 import (
 	"net/http"
 
-	"github.com/yookoala/gofast"
+	"github.com/mjarkk/gofast-fasthttp"
 )
 
 // NewSimpleHandler returns a fastcgi web server implementation as an http.Handler
@@ -14,9 +14,12 @@ import (
 //
 // docroot: the document root of the PHP site.
 // network: network protocol (tcp / tcp4 / tcp6)
-//          or if it is a unix socket, "unix"
+//
+//	or if it is a unix socket, "unix"
+//
 // address: IP address and port, or the socket physical address of the fastcgi
-//          application.
+//
+//	application.
 func NewSimpleHandler(docroot, network, address string) http.Handler {
 	connFactory := gofast.SimpleConnFactory(network, address)
 	h := gofast.NewHandler(
@@ -34,9 +37,12 @@ func NewSimpleHandler(docroot, network, address string) http.Handler {
 //
 // filepath: the path to the endpoint PHP file.
 // network:  network protocol (tcp / tcp4 / tcp6)
-//           or if it is a unix socket, "unix"
+//
+//	or if it is a unix socket, "unix"
+//
 // address:  IP address and port, or the socket physical address of the fastcgi
-//           application.
+//
+//	application.
 func NewFileEndpointHandler(filepath, network, address string) http.Handler {
 	connFactory := gofast.SimpleConnFactory(network, address)
 	h := gofast.NewHandler(
